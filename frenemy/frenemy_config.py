@@ -31,7 +31,7 @@ from nerfstudio.plugins.types import MethodSpecification
 
 frenemy_method = MethodSpecification(
     config=TrainerConfig(
-        method_name="frenemy-model",
+        method_name="nerfrenemy",
         steps_per_eval_batch=500,
         steps_per_save=2000,
         max_num_iterations=30000,
@@ -42,13 +42,14 @@ frenemy_method = MethodSpecification(
                 train_num_rays_per_batch=4096,
                 eval_num_rays_per_batch=4096,
                 patch_size=64,
+                keep_full_image=True,
             ),
             # datamanager=FullImageDatamanagerConfig(
             #     dataparser=NerfstudioDataParserConfig(),
             #     cache_images_type="uint8",
             # ),
             model=FrenemyModelConfig(
-                nerf_config=NerfactoModelConfig(
+                nerf=NerfactoModelConfig(
                     eval_num_rays_per_chunk=1 << 15,
                     average_init_density=0.01,
                     camera_optimizer=CameraOptimizerConfig(mode="SO3xR3"),
@@ -57,17 +58,9 @@ frenemy_method = MethodSpecification(
             ),
         ),
         optimizers={
-            "proposal_networks": {
+            "perturbation_field": {
                 "optimizer": AdamOptimizerConfig(lr=1e-2, eps=1e-15),
                 "scheduler": ExponentialDecaySchedulerConfig(lr_final=0.0001, max_steps=200000),
-            },
-            "fields": {
-                "optimizer": AdamOptimizerConfig(lr=1e-2, eps=1e-15),
-                "scheduler": ExponentialDecaySchedulerConfig(lr_final=0.0001, max_steps=200000),
-            },
-            "camera_opt": {
-                "optimizer": AdamOptimizerConfig(lr=1e-3, eps=1e-15),
-                "scheduler": ExponentialDecaySchedulerConfig(lr_final=1e-4, max_steps=5000),
             },
         },
         viewer=ViewerConfig(num_rays_per_chunk=1 << 15),
