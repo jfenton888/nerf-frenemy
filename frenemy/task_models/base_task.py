@@ -35,9 +35,10 @@ class Task(nn.Module):
         self.config = config
         self.kwargs = kwargs
 
-        self.populate_modules()  # populate the modules of the task model
         # to keep track of which device the nn.Module is on
         self.device_indicator_param = nn.Parameter(torch.empty(0))
+
+        self.populate_modules()  # populate the modules of the task model
 
     @property
     def device(self):

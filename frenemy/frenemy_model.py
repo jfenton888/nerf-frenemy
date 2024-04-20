@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Mapping, Optional, Tuple, Type, Union
 from frenemy.task_models.base_task import Task, TaskConfig
 from frenemy.task_models.fasterrcnn_task import FasterRCNNTaskConfig
+from frenemy.task_models.posecnn_task import PoseCNNTaskConfig
 from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle, RaySamples
 from nerfstudio.data.scene_box import OrientedBox
@@ -44,20 +45,22 @@ class FrenemyModelConfig(ModelConfig):
 
     _target: Type = field(default_factory=lambda: FrenemyModel)
     """target class to instantiate"""
-    # enable_collider: bool = None
-    """Whether to create a scene collider to filter rays."""
-    # collider_params: Optional[Dict[str, float]] = to_immutable_dict({"near_plane": 2.0, "far_plane": 6.0})
-    # """parameters to instantiate scene collider with"""
-    # loss_coefficients: Dict[str, float] = to_immutable_dict({"rgb_loss_coarse": 1.0, "rgb_loss_fine": 1.0})
-    # """parameters to instantiate density field with"""
     num_rays_per_chunk: int = 4096
     """specifies number of rays per chunk during eval"""
     nerf: ModelConfig = field(default_factory=ModelConfig)
     """specifies the nerf type of nerf to use"""
     nerf_path: Optional[Path] = None
     """path to the pretrained nerf model to load"""
-    task_model: TaskConfig = field(default_factory=FasterRCNNTaskConfig)
+    task_model: TaskConfig = field(default_factory=PoseCNNTaskConfig)
     """Task model to use for evaluation"""
+    
+    rgb_loss_mult: float = 1.0
+    """RGB loss multiplier."""
+    regulatization_loss_mult: float = 1e-7
+    """Output regulatization loss multiplier."""
+    perturbation_weight: float = 1.0
+    """Perturbation weight."""
+    
     ## Perturbation field config components
     hidden_dim: int = 64 # 64
     """Dimension of hidden layers"""
@@ -76,14 +79,6 @@ class FrenemyModelConfig(ModelConfig):
     features_per_level: int = 2
     """How many hashgrid features per level"""
     
-    interlevel_loss_mult: float = 1.0
-    """Proposal loss multiplier."""
-    distortion_loss_mult: float = 0.002
-    """Distortion loss multiplier."""
-    orientation_loss_mult: float = 0.0001
-    """Orientation loss multiplier on computed normals."""
-    pred_normal_loss_mult: float = 0.001
-    """Predicted normal loss multiplier."""
     # use_proposal_weight_anneal: bool = True
     # """Whether to use proposal weight annealing."""
     use_appearance_embedding: bool = True
@@ -109,120 +104,19 @@ class FrenemyModelConfig(ModelConfig):
 
 
 
-
-
-    # """Whether to randomize the background color."""
-    # hidden_dim: int = 64
-    # """Dimension of hidden layers"""
-    # hidden_dim_color: int = 64
-    # """Dimension of hidden layers for color network"""
-    # hidden_dim_transient: int = 64
-    # """Dimension of hidden layers for transient network"""
-    # num_levels: int = 16
-    # """Number of levels of the hashmap for the base mlp."""
-    # base_res: int = 16
-    # """Resolution of the base grid for the hashgrid."""
-    # max_res: int = 2048
-    # """Maximum resolution of the hashmap for the base mlp."""
-    # log2_hashmap_size: int = 19
-    # """Size of the hashmap for the base mlp"""
-    # features_per_level: int = 2
-    # """How many hashgrid features per level"""
-    # num_proposal_samples_per_ray: Tuple[int, ...] = (256, 96)
-    # """Number of samples per ray for each proposal network."""
-    # num_nerf_samples_per_ray: int = 48
-    # """Number of samples per ray for the nerf network."""
-    # proposal_update_every: int = 5
-    # """Sample every n steps after the warmup"""
-    # proposal_warmup: int = 5000
-    # """Scales n from 1 to proposal_update_every over this many steps"""
-    # num_proposal_iterations: int = 2
-    # """Number of proposal network iterations."""
-    # use_same_proposal_network: bool = False
-    # """Use the same proposal network. Otherwise use different ones."""
-    # proposal_net_args_list: List[Dict] = field(
-    #     default_factory=lambda: [
-    #         {"hidden_dim": 16, "log2_hashmap_size": 17, "num_levels": 5, "max_res": 128, "use_linear": False},
-    #         {"hidden_dim": 16, "log2_hashmap_size": 17, "num_levels": 5, "max_res": 256, "use_linear": False},
-    #     ]
-    # )
-    # """Arguments for the proposal density fields."""
-    # proposal_initial_sampler: Literal["piecewise", "uniform"] = "piecewise"
-    # """Initial sampler for the proposal network. Piecewise is preferred for unbounded scenes."""
-    # interlevel_loss_mult: float = 1.0
-    # """Proposal loss multiplier."""
-    # distortion_loss_mult: float = 0.002
-    # """Distortion loss multiplier."""
-    # orientation_loss_mult: float = 0.0001
-    # """Orientation loss multiplier on computed normals."""
-    # pred_normal_loss_mult: float = 0.001
-    # """Predicted normal loss multiplier."""
-    # use_proposal_weight_anneal: bool = True
-    # """Whether to use proposal weight annealing."""
-    # use_appearance_embedding: bool = True
-    # """Whether to use an appearance embedding."""
-    # use_average_appearance_embedding: bool = True
-    # """Whether to use average appearance embedding or zeros for inference."""
-    # proposal_weights_anneal_slope: float = 10.0
-    # """Slope of the annealing function for the proposal weights."""
-    # proposal_weights_anneal_max_num_iters: int = 1000
-    # """Max num iterations for the annealing function."""
-    # use_single_jitter: bool = True
-    # """Whether use single jitter or not for the proposal networks."""
-    # predict_normals: bool = False
-    # """Whether to predict normals or not."""
-    # disable_scene_contraction: bool = False
-    # """Whether to disable scene contraction or not."""
-    # use_gradient_scaling: bool = False
-    # """Use gradient scaler where the gradients are lower for points closer to the camera."""
-    # implementation: Literal["tcnn", "torch"] = "tcnn"
-    # """Which implementation to use for the model."""
-    # appearance_embed_dim: int = 32
-    # """Dimension of the appearance embedding."""
-    # average_init_density: float = 1.0
-    # """Average initial density output from MLP. """
-    # camera_optimizer: CameraOptimizerConfig = field(default_factory=lambda: CameraOptimizerConfig(mode="SO3xR3"))
-    # """Config of the camera optimizer to use"""
-
-
 class FrenemyModel(Model):
     """Template Model."""
 
     config: FrenemyModelConfig
     perturbation_field: NerfactoField
-    # task_model: Task
+    task_model: Task
 
     def populate_modules(self):
-        # super().populate_modules()
-        
-        # Renderer (use the one from the nerf)
-        # self.renderer_rgb = RGBRenderer(background_color=self.config.nerf.background_color)
 
         # Loss Functions
         self.rgb_loss = MSELoss()
         
-        from torchmetrics.image import PeakSignalNoiseRatio
-        # self.psnr = PeakSignalNoiseRatio(data_range=1.0)
-        # self.ssim = structural_similarity_index_measure
-        # self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True)
-
-        self.task_model = self.config.task_model.setup()
-        # from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_320_fpn, FasterRCNN_MobileNet_V3_Large_320_FPN_Weights # maskrcnn_resnet50_fpn
-        
-        # self.task_weights=FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.COCO_V1
-        # self.task_model = fasterrcnn_mobilenet_v3_large_320_fpn(weights=self.task_weights) # maskrcnn_resnet50_fpn(pretrained=True)
-
-        # # Step 1: Initialize model with the best available weights
-        # self.task_model.eval()
-
-        # # Step 2: Initialize the inference transforms
-        # self.task_preprocess = self.task_weights.transforms()
-
-        self.nerf = self.config.nerf.setup(scene_box=self.scene_box, 
-                                                  num_train_data=self.num_train_data, 
-                                                  **self.kwargs)
-
-
+        # Set up the perturbation field
         if self.config.disable_scene_contraction:
             scene_contraction = None
         else:
@@ -248,11 +142,19 @@ class FrenemyModel(Model):
             average_init_density=self.config.average_init_density,
             implementation=self.config.implementation,
         )
-        
-        # TODO: Load state dict for nerf model
+
+        # Task model
+        self.task_model = self.config.task_model.setup()
+
+        # Set up the nerf model
+        self.nerf = self.config.nerf.setup(scene_box=self.scene_box, 
+                                                  num_train_data=self.num_train_data, 
+                                                  **self.kwargs)
+        # And load the model into the 
         self.load_nerf_model(self.config.nerf_path)
 
         # Overwrite the get_field_outputs method from the nerf model to add in the outputs from the perturbation module
+        self.use_perturbation = True
         self.nerf.get_field_outputs = self.get_field_outputs
 
 
@@ -289,10 +191,6 @@ class FrenemyModel(Model):
         if is_ddp_model_state:
             model_state = {key[len("module.") :]: value for key, value in model_state.items()}
 
-        # model_state = {
-        #     (key[len("_model.") :] if key.startswith("_model.") else key): value for key, value in state_dict.items()
-        # }
-
         self.nerf.update_to_step(load_step)
         try:
             self.nerf.load_state_dict(model_state, strict=True)
@@ -306,11 +204,9 @@ class FrenemyModel(Model):
 
 
     def get_param_groups(self) -> Dict[str, List[Parameter]]:
-        # TODO: Once pretrained models are being loaded in, these parameters should only be those from the perturbation model
+        # Once pretrained models are being loaded in, these parameters should only be those from the perturbation model
         # These determine the parameters updated by the optimizer
         
-        # return self.nerf.get_param_groups()
-
         param_groups = {}
         # param_groups = self.nerf.get_param_groups()
         param_groups["perturbation_field"] = list(self.perturbation_field.parameters())
@@ -321,11 +217,10 @@ class FrenemyModel(Model):
         self, training_callback_attributes: TrainingCallbackAttributes
     ) -> List[TrainingCallback]:
         
-        # return self.nerf.get_training_callbacks(training_callback_attributes)
         
         callbacks = []
         return callbacks
-    
+
     def get_field_outputs(self, ray_samples: RaySamples, **kwargs) -> Dict[FieldHeadNames, torch.Tensor]:
 
         # Call the unaltered method from the original model
@@ -337,63 +232,26 @@ class FrenemyModel(Model):
         # Combine the outputs without altering torch graph
         outputs = {}
         for output_name, outputs_tensor in nerf_outputs.items():
-            # if output_name in perturbation_outputs.keys(): 
             if output_name == FieldHeadNames.RGB:
-                outputs[output_name] = outputs_tensor + (1.0*perturbation_outputs[output_name])
-                # outputs[FieldHeadNames.NERF] = outputs_tensor
-                # outputs[FieldHeadNames.PERTURBATION] = perturbation_outputs[output_name]
+                perturbation_rgb = perturbation_outputs[FieldHeadNames.RGB]
+                outputs[FieldHeadNames.PERTURBATION] = perturbation_rgb
+                if self.use_perturbation:
+                    outputs[FieldHeadNames.RGB] = torch.clamp((outputs_tensor + (self.config.perturbation_weight*perturbation_rgb)), 
+                                                               min=0, 
+                                                               max=1)
+                else: 
+                    outputs[FieldHeadNames.RGB] = outputs_tensor
             else:
                 outputs[output_name] = outputs_tensor
 
         return outputs
 
     def get_outputs(self, ray_bundle: RayBundle):
+        # The outputs for this model come from those produced by the nerf, using the modified get_field_outputs method
 
         return self.nerf(ray_bundle)
 
-    
-    # def forward(self, ray_bundle: Union[RayBundle, Cameras]) -> Dict[str, Union[torch.Tensor, List]]:
-    #     """Run forward starting with a ray bundle. This outputs different things depending on the configuration
-    #     of the model and whether or not the batch is provided (whether or not we are training basically)
-
-    #     Args:
-    #         ray_bundle: containing all the information needed to render that ray latents included
-    #     """
-    #     if self.collider is not None:
-    #         ray_bundle = self.collider(ray_bundle)
-
-    #     return self.get_outputs(ray_bundle)
-    
-    #     if isinstance(ray_bundle, RayBundle):
-    #         if self.collider is not None:
-    #             ray_bundle = self.collider(ray_bundle)
-
-    #         return self.get_outputs(ray_bundle)
-            
-        
-    #     elif isinstance(ray_bundle, Cameras): 
-    #         return self._get_outputs_for_camera(ray_bundle)
-        
-    #     return {}
-         
-
     def get_metrics_dict(self, outputs, batch):
-        # Need to use the full image, currently only gives the subset of ray indices
-
-        # return self.nerf.get_metrics_dict(outputs, batch)
-
-
-        # metrics_dict = {}
-
-        # # patch_images = torch.unique(batch["indices"][:,0])
-        # # assert patch_images.size(0) == 1, f"All indices in batch must be from same image, but found {patch_images}"
-
-        # image = batch["full_image"].to(self.device)#[patch_images[0]].to(self.device)
-        # modified_image = image.clone()
-
-        # modified_image[batch["indices"][:,1], batch["indices"][:,2], :] = outputs["rgb"]
-
-        # metrics_dict["psnr"] = self.nerf.psnr(image, modified_image)
 
         metrics_dict = {}
         gt_rgb = batch["image"].to(self.device)  # RGB or RGBA image
@@ -402,6 +260,13 @@ class FrenemyModel(Model):
         metrics_dict["psnr"] = self.nerf.psnr(predicted_rgb, gt_rgb)
 
         self.task_model.get_metrics_dict(metrics_dict, outputs, batch)
+
+        patch_images = torch.unique(batch["indices"][:,0])
+        assert patch_images.size(0) == 1, f"All indices in batch must be from same image, but found {patch_images}"
+
+        # image = batch["full_image"][0].to(self.device)#[patch_images[0]].to(self.device)
+
+        # metrics_dict["renderer_quality"] = self.rgb_loss(image, gt_rgb)
 
         # # Step 3: Apply inference preprocessing transforms
         # target_batch = [self.task_preprocess(image.permute(2,0,1))]
@@ -459,70 +324,50 @@ class FrenemyModel(Model):
     def get_loss_dict(self, outputs, batch, metrics_dict=None):
         # TODO: Add loss from task specific network here. This will require loading the network in during setup
         
-        # return self.nerf.get_loss_dict(outputs, batch, metrics_dict)
-
-
-        # loss_dict = {}
-
-        # # patch_images = torch.unique(batch["indices"][:,0])
-        # # assert patch_images.size(0) == 1, f"All indices in batch must be from same image, but found {patch_images}"
-
-        # image = batch["full_image"].to(self.device)#[patch_images[0]].to(self.device)
-        # modified_image = image.clone()
-
-        # modified_image[batch["indices"][:,1], batch["indices"][:,2], :] = outputs["rgb"]
-
-        # loss_dict["rgb_loss"] = self.rgb_loss(image, modified_image)
-
         loss_dict = {}
-        image = batch["image"].to(self.device)
-        pred_rgb, gt_rgb = self.nerf.renderer_rgb.blend_background_for_loss_computation(
-            pred_image=outputs["rgb"],
-            pred_accumulation=outputs["accumulation"],
-            gt_image=image,
-        )
-        loss_dict["rgb_loss"] = self.rgb_loss(gt_rgb, pred_rgb)
 
+        # L2 norm regularization loss
+        loss_dict["regularization_loss"] = self.config.regulatization_loss_mult * torch.mean(
+            torch.norm(outputs["field_outputs"][FieldHeadNames.PERTURBATION])
+        )
+
+        patch_images = torch.unique(batch["indices"][:,0])
+        assert patch_images.size(0) == 1, f"All indices in batch must be from same image, but found {patch_images}"
+        patch_image = patch_images.item()
+
+        batch["rendered_image"] = self.get_outputs_for_camera(batch["cameras"][patch_image])["rgb"]
+
+
+        # RGB loss if it's need
+        image = batch["image"].to(self.device)
+
+        # Mask of indices that are not assigned to any class (background)
+        mask = batch["label"][patch_image].to(self.device)
+        # Get indices shaped so they can be used to slice the image rays        
+        background_mask = mask[0, batch["indices"][:,1], batch["indices"][:,2]]
+
+        pred_rgb, gt_rgb = self.nerf.renderer_rgb.blend_background_for_loss_computation(
+            pred_image=outputs["rgb"][background_mask, :],
+            pred_accumulation=outputs["accumulation"],
+            gt_image=image[background_mask, :],
+        )
+        # Can result in empty mask, no rgb loss if full patch is inside an object
+        if torch.numel(pred_rgb) > 0 and torch.numel(gt_rgb):
+            loss_dict["rgb_loss"] = self.config.rgb_loss_mult * self.rgb_loss(gt_rgb, pred_rgb)
+        else:
+            loss_dict["rgb_loss"] = torch.zeros(1, device=self.device)
+
+        # Get the loss components from the task model
         self.task_model.get_loss_dict(loss_dict, outputs, batch, metrics_dict)
 
-
-        # loss_dict = {}
-        # image = batch["image"].to(self.device)
-        # pred_rgb, gt_rgb = self.nerf.renderer_rgb.blend_background_for_loss_computation(
-        #     pred_image=outputs["rgb"],
-        #     pred_accumulation=outputs["accumulation"],
-        #     gt_image=image,
-        # )
-        # loss_dict["rgb_loss"] = self.rgb_loss(gt_rgb, pred_rgb)
-
         return loss_dict
-        
-        # if self.training:
-        #     loss_dict["interlevel_loss"] = self.config.interlevel_loss_mult * interlevel_loss(
-        #         outputs["weights_list"], outputs["ray_samples_list"]
-        #     )
-        #     assert metrics_dict is not None and "distortion" in metrics_dict
-        #     loss_dict["distortion_loss"] = self.config.distortion_loss_mult * metrics_dict["distortion"]
-        #     if self.config.predict_normals:
-        #         # orientation loss for computed normals
-        #         loss_dict["orientation_loss"] = self.config.orientation_loss_mult * torch.mean(
-        #             outputs["rendered_orientation_loss"]
-        #         )
-
-        #         # ground truth supervision for normals
-        #         loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
-        #             outputs["rendered_pred_normal_loss"]
-        #         )
-        # #     # Add loss from camera optimizer
-        # #     self.camera_optimizer.get_loss_dict(loss_dict)
-        # return loss_dict
-
 
     def get_image_metrics_and_images(
         self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
     ) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
-        
-        # return self.nerf.get_image_metrics_and_images(outputs, batch)
+        # This will be called during evaluation, and will be called with full images as outputs shaped [H, W, C]
+
+        # print("training: {}".format(self.nerf.training))
         
         gt_rgb = batch["image"].to(self.device)
         predicted_rgb = outputs["rgb"]  # Blended with background (black if random background)
@@ -537,13 +382,13 @@ class FrenemyModel(Model):
         combined_acc = torch.cat([acc], dim=1)
         combined_depth = torch.cat([depth], dim=1)
 
-        # Switch images from [H, W, C] to [1, C, H, W] for metrics computations
+        # Switch images from[H, W, C] to [1, C, H, W]  for metrics computations
         gt_rgb = torch.moveaxis(gt_rgb, -1, 0)[None, ...]
         predicted_rgb = torch.moveaxis(predicted_rgb, -1, 0)[None, ...]
 
         psnr = self.nerf.psnr(gt_rgb, predicted_rgb)
         ssim = self.nerf.ssim(gt_rgb, predicted_rgb)
-        lpips = self.nerf.lpips(gt_rgb, predicted_rgb)
+        lpips = self.nerf.lpips(gt_rgb, torch.clamp(predicted_rgb, min=0, max=1))
 
         # all of these metrics will be logged as scalars
         metrics_dict = {"psnr": float(psnr.item()), "ssim": float(ssim)}  # type: ignore
@@ -559,71 +404,12 @@ class FrenemyModel(Model):
             )
             images_dict[key] = prop_depth_i
 
+        # Visualize the regions that have been changed by the model (probably better done with some form of greyscale)
+        diff_image = torch.abs(gt_rgb - predicted_rgb)
+        images_dict["difference"] = diff_image[0].permute(1, 2, 0)
+
+        self.task_model.get_image_metrics_and_images(metrics_dict, images_dict, outputs, batch)
+
         return metrics_dict, images_dict
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # def _get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None) -> Dict[str, torch.Tensor]:
-    #     """Takes in a camera, generates the raybundle, and computes the output of the model.
-    #     Assumes a ray-based model.
-
-    #     Args:
-    #         camera: generates raybundle
-    #     """
-    #     print(camera.shape)
-    #     return self._get_outputs_for_camera_ray_bundle(
-    #         camera.generate_rays(camera_indices=0, keep_shape=True, obb_box=obb_box)
-    #     )
-
-    # def _get_outputs_for_camera_ray_bundle(self, camera_ray_bundle: RayBundle) -> Dict[str, torch.Tensor]:
-    #     """Takes in camera parameters and computes the output of the model.
-
-    #     Args:
-    #         camera_ray_bundle: ray bundle to calculate outputs over
-    #     """
-    #     num_rays_per_chunk = self.config.num_rays_per_chunk
-    #     image_height, image_width = camera_ray_bundle.origins.shape[:2]
-    #     num_rays = len(camera_ray_bundle)
-    #     # print(f"Total number of rays: {num_rays}")
-    #     outputs_lists = defaultdict(list)
-    #     # print(f"Processing n chunks: {num_rays // num_rays_per_chunk}")
- 
-    #     import random
-    #     for i in random.sample(range(0, num_rays, num_rays_per_chunk), 10):
-    #         print(f"Processing rays {i} to {i + num_rays_per_chunk}")
-    #         start_idx = i
-    #         end_idx = i + num_rays_per_chunk
-    #         ray_bundle = camera_ray_bundle.get_row_major_sliced_ray_bundle(start_idx, end_idx)
-    #         # move the chunk inputs to the model device
-    #         ray_bundle = ray_bundle.to(self.device)
-    #         outputs = self.forward(ray_bundle=ray_bundle)
-    #         for output_name, output in outputs.items():  # type: ignore
-    #             if not isinstance(output, torch.Tensor):
-    #                 # TODO: handle lists of tensors as well
-    #                 continue
-    #             # move the chunk outputs from the model device back to the device of the inputs.
-    #             outputs_lists[output_name].append(output)
-    #     outputs = {}
-    #     for output_name, outputs_list in outputs_lists.items():
-    #         outputs[output_name] = torch.cat(outputs_list).view(image_height, image_width, -1)  # type: ignore
-
-    #     return outputs
-
-    
 
 
