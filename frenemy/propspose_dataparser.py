@@ -190,10 +190,26 @@ class PROPSPose(DataParser):
 
             # PoseCNN specific
             idx = int(fname.stem)
+
+            depth_file = f"{idx:06d}.png"
+            depth_fname = os.path.join(depth_path, depth_file)
+            depth_filenames.append(Path(depth_fname))
+
             scene_objs_gt = scene_gt[str(idx)]
             scene_objs_info_gt = scene_gt_info[str(idx)]
             objs_dict = {}
-            
+            """
+            objs_dict = {
+                0: {
+                    cam_R_m2c:
+                    cam_t_m2c:
+                    obj_id:
+                    bbox_visib:
+                    visiable_mask_path:
+                }
+                ...
+            }
+            """
             for obj_idx in range(len(scene_objs_gt)):
                 objs_dict[obj_idx] = {}
                 objs_dict[obj_idx]['R'] = np.array(scene_objs_gt[obj_idx]['cam_R_m2c']).reshape(3, 3)
@@ -207,42 +223,6 @@ class PROPSPose(DataParser):
                 objs_dict[obj_idx]['bbox_visib'] = scene_objs_info_gt[obj_idx]['bbox_visib']
                 assert f"{idx:006d}_{obj_idx:06d}.png" in mask_list
                 objs_dict[obj_idx]['visible_mask_path'] = os.path.join(mask_path, f"{idx:006d}_{obj_idx:06d}.png")
-
-            """
-            objs_dict = {
-                0: {
-                    cam_R_m2c:
-                    cam_t_m2c:
-                    obj_id:
-                    bbox_visib:
-                    visiable_mask_path:
-                }
-                ...
-            }
-            """
-
-            # if "mask_path" in frame:
-            #     mask_filepath = Path(frame["mask_path"])
-            #     mask_fname = self._get_fname(
-            #         mask_filepath,
-            #         data_dir,
-            #         downsample_folder_prefix="masks_",
-            #     )
-            #     mask_filenames.append(mask_fname)
-
-            # if "depth_file_path" in frame:
-            #     depth_filepath = Path(frame["depth_file_path"])
-            #     depth_fname = self._get_fname(depth_filepath, data_dir, downsample_folder_prefix="depths_")
-            #     depth_filenames.append(depth_fname)
-
-            # depth_file = os.path.join(depth_path, f"{idx:006d}.png")
-            # print(depth_file)
-            # depth_fname = self._get_fname(depth_file, data_dir)
-            # print(depth_fname)
-            # objs_dict[obj_idx]['visible_mask_path'] = self._get_fname(Path(mask_file), data_dir)
-            depth_file = f"{idx:06d}.png"
-            depth_fname = os.path.join(depth_path, depth_file)
-            depth_filenames.append(Path(depth_fname))
 
             objs_dict_list.append(objs_dict)
 
@@ -414,61 +394,6 @@ class PROPSPose(DataParser):
         except AttributeError:
             self.prompted_user = False
 
-        # # Load 3D points
-        # if self.config.load_3D_points:
-        #     if "ply_file_path" in meta:
-        #         ply_file_path = data_dir / meta["ply_file_path"]
-
-        #     elif colmap_path.exists():
-        #         from rich.prompt import Confirm
-
-        #         # check if user wants to make a point cloud from colmap points
-        #         if not self.prompted_user:
-        #             self.create_pc = Confirm.ask(
-        #                 "load_3D_points is true, but the dataset was processed with an outdated ns-process-data that didn't convert colmap points to .ply! Update the colmap dataset automatically?"
-        #             )
-
-        #         if self.create_pc:
-        #             import json
-
-        #             from nerfstudio.process_data.colmap_utils import create_ply_from_colmap
-
-        #             with open(self.config.data / "transforms.json") as f:
-        #                 transforms = json.load(f)
-
-        #             # Update dataset if missing the applied_transform field.
-        #             if "applied_transform" not in transforms:
-        #                 transforms["applied_transform"] = meta["applied_transform"]
-
-        #             ply_filename = "sparse_pc.ply"
-        #             create_ply_from_colmap(
-        #                 filename=ply_filename,
-        #                 recon_dir=colmap_path,
-        #                 output_dir=self.config.data,
-        #                 applied_transform=applied_transform,
-        #             )
-        #             ply_file_path = data_dir / ply_filename
-        #             transforms["ply_file_path"] = ply_filename
-
-        #             # This was the applied_transform value
-
-        #             with open(self.config.data / "transforms.json", "w", encoding="utf-8") as f:
-        #                 json.dump(transforms, f, indent=4)
-        #         else:
-        #             ply_file_path = None
-        #     else:
-        #         if not self.prompted_user:
-        #             CONSOLE.print(
-        #                 "[bold yellow]Warning: load_3D_points set to true but no point cloud found. splatfacto will use random point cloud initialization."
-        #             )
-        #         ply_file_path = None
-
-        #     if ply_file_path:
-        #         sparse_points = self._load_3D_points(ply_file_path, transform_matrix, scale_factor)
-        #         if sparse_points is not None:
-        #             metadata.update(sparse_points)
-        #     self.prompted_user = True
-
         dataparser_outputs = DataparserOutputs(
             image_filenames=image_filenames,
             cameras=cameras,
@@ -485,45 +410,6 @@ class PROPSPose(DataParser):
             },
         )
         return dataparser_outputs
-
-    def _load_3D_points(self, ply_file_path: Path, transform_matrix: torch.Tensor, scale_factor: float):
-        """Loads point clouds positions and colors from .ply
-
-        Args:
-            ply_file_path: Path to .ply file
-            transform_matrix: Matrix to transform world coordinates
-            scale_factor: How much to scale the camera origins by.
-
-        Returns:
-            A dictionary of points: points3D_xyz and colors: points3D_rgb
-        """
-        import open3d as o3d  # Importing open3d is slow, so we only do it if we need it.
-
-        pcd = o3d.io.read_point_cloud(str(ply_file_path))
-
-        # if no points found don't read in an initial point cloud
-        if len(pcd.points) == 0:
-            return None
-
-        points3D = torch.from_numpy(np.asarray(pcd.points, dtype=np.float32))
-        points3D = (
-            torch.cat(
-                (
-                    points3D,
-                    torch.ones_like(points3D[..., :1]),
-                ),
-                -1,
-            )
-            @ transform_matrix.T
-        )
-        points3D *= scale_factor
-        points3D_rgb = torch.from_numpy((np.asarray(pcd.colors) * 255).astype(np.uint8))
-
-        out = {
-            "points3D_xyz": points3D,
-            "points3D_rgb": points3D_rgb,
-        }
-        return out
 
     def _get_fname(self, filepath: Path, data_dir: Path, downsample_folder_prefix="images_") -> Path:
         """Get the filename of the image file.
@@ -556,5 +442,5 @@ class PROPSPose(DataParser):
             return data_dir / f"{downsample_folder_prefix}{self.downscale_factor}" / filepath.name
         return data_dir / filepath
 
-
+# Needed to register the data parser with Nerfstudio
 PROPSPoseParserSpec = DataParserSpecification(config=PROPSPoseDataParserConfig()) 

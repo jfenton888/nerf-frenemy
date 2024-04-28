@@ -38,34 +38,33 @@ frenemy_method = MethodSpecification(
         method_name="nerfrenemy",
         steps_per_eval_batch=100,
         steps_per_eval_image=100,
-        steps_per_save=2000,
-        max_num_iterations=30000,
+        steps_per_save=500,
+        max_num_iterations=2000,
         mixed_precision=True,
         pipeline=VanillaPipelineConfig(
             datamanager=ParallelDataManagerConfig(
                 _target=ParallelDataManager[PoseCNNDataset],
-                dataparser=PROPSPoseDataParserConfig(),
+                dataparser=PROPSPoseDataParserConfig(
+                    train_split_fraction=0.8
+                ),
                 train_num_rays_per_batch=4096,
                 eval_num_rays_per_batch=4096,
                 patch_size=64,
-                keep_full_image=False,
+                keep_full_image=True,
             ),
-            # datamanager=FullImageDatamanagerConfig(
-            #     dataparser=NerfstudioDataParserConfig(),
-            #     cache_images_type="uint8",
-            # ),
             model=FrenemyModelConfig(
                 nerf=NerfactoModelConfig(
                     eval_num_rays_per_chunk=1 << 15,
                     average_init_density=0.01,
                     camera_optimizer=CameraOptimizerConfig(mode="SO3xR3"),
+                    near_plane=0.5,
                 ),
                 nerf_path=Path("outputs/poster/nerfacto/2024-02-15_133222/nerfstudio_models/"),
             ),
         ),
         optimizers={
             "perturbation_field": {
-                "optimizer": AdamOptimizerConfig(lr=1e-2, eps=1e-15),
+                "optimizer": AdamOptimizerConfig(lr=1e-3, eps=1e-15),
                 "scheduler": ExponentialDecaySchedulerConfig(lr_final=0.0001, max_steps=200000),
             },
         },

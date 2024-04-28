@@ -6,6 +6,7 @@ be added to the outputs from the pretrained (and fixed) nerf that is loaded in. 
 fields output by the NerfactoField are currently not used.
 """
 from collections import defaultdict
+import copy
 import os
 
 import torch
@@ -15,6 +16,9 @@ from pathlib import Path
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Mapping, Optional, Tuple, Type, Union
+
+import torchvision.transforms.functional
+import torchvision.transforms.v2
 from frenemy.task_models.base_task import Task, TaskConfig
 from frenemy.task_models.fasterrcnn_task import FasterRCNNTaskConfig
 from frenemy.task_models.posecnn_task import PoseCNNTaskConfig
@@ -56,7 +60,7 @@ class FrenemyModelConfig(ModelConfig):
     
     rgb_loss_mult: float = 1.0
     """RGB loss multiplier."""
-    regulatization_loss_mult: float = 1e-7
+    regulatization_loss_mult: float = 1e-4
     """Output regulatization loss multiplier."""
     perturbation_weight: float = 1.0
     """Perturbation weight."""
@@ -153,6 +157,12 @@ class FrenemyModel(Model):
         # And load the model into the 
         self.load_nerf_model(self.config.nerf_path)
 
+        for (name_pert, state_pert), (name_field, state_field) in zip(self.perturbation_field.named_children(), self.nerf.field.named_children()):
+            if name_field != "mlp_head":
+                state_pert.load_state_dict(state_field.state_dict())
+
+        # self.perturbation_field = copy.deepcopy(self.nerf.field) # Previously copied the entire nerf field, but better performance when keeping mlp_head randomly initialized
+
         # Overwrite the get_field_outputs method from the nerf model to add in the outputs from the perturbation module
         self.use_perturbation = True
         self.nerf.get_field_outputs = self.get_field_outputs
@@ -208,8 +218,7 @@ class FrenemyModel(Model):
         # These determine the parameters updated by the optimizer
         
         param_groups = {}
-        # param_groups = self.nerf.get_param_groups()
-        param_groups["perturbation_field"] = list(self.perturbation_field.parameters())
+        param_groups["perturbation_field"] = list(self.perturbation_field.mlp_head.parameters())
         return param_groups
         
 
@@ -236,9 +245,7 @@ class FrenemyModel(Model):
                 perturbation_rgb = perturbation_outputs[FieldHeadNames.RGB]
                 outputs[FieldHeadNames.PERTURBATION] = perturbation_rgb
                 if self.use_perturbation:
-                    outputs[FieldHeadNames.RGB] = torch.clamp((outputs_tensor + (self.config.perturbation_weight*perturbation_rgb)), 
-                                                               min=0, 
-                                                               max=1)
+                    outputs[FieldHeadNames.RGB] = outputs_tensor + 2*(self.config.perturbation_weight*perturbation_rgb - 0.5)
                 else: 
                     outputs[FieldHeadNames.RGB] = outputs_tensor
             else:
@@ -263,39 +270,6 @@ class FrenemyModel(Model):
 
         patch_images = torch.unique(batch["indices"][:,0])
         assert patch_images.size(0) == 1, f"All indices in batch must be from same image, but found {patch_images}"
-
-        # image = batch["full_image"][0].to(self.device)#[patch_images[0]].to(self.device)
-
-        # metrics_dict["renderer_quality"] = self.rgb_loss(image, gt_rgb)
-
-        # # Step 3: Apply inference preprocessing transforms
-        # target_batch = [self.task_preprocess(image.permute(2,0,1))]
-
-
-        # # Step 4: Use the model and visualize the prediction
-        # self.task_model.eval()
-        # target = self.task_model(target_batch)[0]
-
-        # # Predict for the image
-        # self.task_model.train()
-        # img = self.task_preprocess(modified_image.permute(2,0,1))
-
-        # detection_outputs = self.task_model(img.unsqueeze(0), [target])
-        # # print(detection_outputs)
-
-        # task_loss = sum(loss for loss in detection_outputs.values())
-        # # print(task_loss)
-
-        # metrics_dict["task"] = task_loss
-
-        # # labels = [self.task_weights.meta["categories"][i] for i in prediction["labels"]]
-        # # print(labels)
-        # # # box = draw_bounding_boxes(img, boxes=prediction["boxes"],
-        # # #                         labels=labels,
-        # # #                         colors="red",
-        # # #                         width=4, font_size=30)
-        
-        # metrics_dict["psnr"] = self.nerf.psnr(image, modified_image)
 
         return metrics_dict
     
@@ -328,7 +302,7 @@ class FrenemyModel(Model):
 
         # L2 norm regularization loss
         loss_dict["regularization_loss"] = self.config.regulatization_loss_mult * torch.mean(
-            torch.norm(outputs["field_outputs"][FieldHeadNames.PERTURBATION])
+            torch.norm(outputs["field_outputs"][FieldHeadNames.PERTURBATION] - 0.5)
         )
 
         patch_images = torch.unique(batch["indices"][:,0])
@@ -372,15 +346,15 @@ class FrenemyModel(Model):
         gt_rgb = batch["image"].to(self.device)
         predicted_rgb = outputs["rgb"]  # Blended with background (black if random background)
         gt_rgb = self.nerf.renderer_rgb.blend_background(gt_rgb)
-        acc = colormaps.apply_colormap(outputs["accumulation"])
-        depth = colormaps.apply_depth_colormap(
-            outputs["depth"],
-            accumulation=outputs["accumulation"],
-        )
+        # acc = colormaps.apply_colormap(outputs["accumulation"])
+        # depth = colormaps.apply_depth_colormap(
+        #     outputs["depth"],
+        #     accumulation=outputs["accumulation"],
+        # )
 
         combined_rgb = torch.cat([gt_rgb, predicted_rgb], dim=1)
-        combined_acc = torch.cat([acc], dim=1)
-        combined_depth = torch.cat([depth], dim=1)
+        # combined_acc = torch.cat([acc], dim=1)
+        # combined_depth = torch.cat([depth], dim=1)
 
         # Switch images from[H, W, C] to [1, C, H, W]  for metrics computations
         gt_rgb = torch.moveaxis(gt_rgb, -1, 0)[None, ...]
@@ -394,20 +368,21 @@ class FrenemyModel(Model):
         metrics_dict = {"psnr": float(psnr.item()), "ssim": float(ssim)}  # type: ignore
         metrics_dict["lpips"] = float(lpips)
 
-        images_dict = {"img": combined_rgb, "accumulation": combined_acc, "depth": combined_depth}
+        images_dict = {"img": combined_rgb} #, "accumulation": combined_acc, "depth": combined_depth}
 
-        for i in range(self.config.nerf.num_proposal_iterations):
-            key = f"prop_depth_{i}"
-            prop_depth_i = colormaps.apply_depth_colormap(
-                outputs[key],
-                accumulation=outputs["accumulation"],
-            )
-            images_dict[key] = prop_depth_i
+        # for i in range(self.config.nerf.num_proposal_iterations):
+        #     key = f"prop_depth_{i}"
+        #     prop_depth_i = colormaps.apply_depth_colormap(
+        #         outputs[key],
+        #         accumulation=outputs["accumulation"],
+        #     )
+        #     images_dict[key] = prop_depth_i
 
         # Visualize the regions that have been changed by the model (probably better done with some form of greyscale)
         diff_image = torch.abs(gt_rgb - predicted_rgb)
         images_dict["difference"] = diff_image[0].permute(1, 2, 0)
 
+        # Add all the metrics and images specific to the task model
         self.task_model.get_image_metrics_and_images(metrics_dict, images_dict, outputs, batch)
 
         return metrics_dict, images_dict

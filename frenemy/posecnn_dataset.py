@@ -144,7 +144,7 @@ class PoseCNNDataset(InputDataset):
         # data_dict['rgb'] = rgb.transpose((2,0,1))
 
         with Image.open(depth_path) as im:
-            data_dict['depth'] = np.array(im)[np.newaxis, :]
+            data_dict['depth'] = np.array(im, dtype=np.int16)[np.newaxis, :]
         # ## TODO data-augmentation of depth 
         assert(len(objs_dict) <= self.max_instance_num)
         objs_id = np.zeros(self.max_instance_num, dtype=np.uint8)
@@ -182,16 +182,8 @@ class PoseCNNDataset(InputDataset):
                 distance = np.sqrt(dx ** 2 + dy ** 2)
                 nx, ny = dx / distance, dy / distance
                 Tz = np.ones((self.resolution[1], self.resolution[0])) * RT[2, 3]
-                # print("data xv {}".format(xv.shape))
-                # print("data yv {}".format(yv.shape))
-                # print("data nx {}".format(nx.shape))
-                # print("data ny {}".format(ny.shape))
-                
-                # print("data Tz {}".format(Tz.shape))
-                centermaps[idx] = np.array([nx, ny, Tz])
 
-                # print(np.array([center[0], center[1]]))
-                # print(np.array([int(center[0]), int(center[1])]))
+                # centermaps[idx] = np.array([nx, ny, Tz]) # Centermaps is too large to be able to store for every image
 
                 centers[idx] = np.array([float(center[0]), float(center[1])])
         label[0] = 1 - label[1:].sum(axis=0)
@@ -200,7 +192,6 @@ class PoseCNNDataset(InputDataset):
         data_dict['label'] = label
         data_dict['bbx'] = bbx
         data_dict['RTs'] = RTs
-        # data_dict['centermaps'] = centermaps.reshape(-1, self.resolution[1], self.resolution[0])
         data_dict['centers'] = centers
         return data_dict
 
