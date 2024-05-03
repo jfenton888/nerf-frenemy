@@ -1,80 +1,100 @@
-# nerfstudio-method-template
-Template repository for creating and registering methods in Nerfstudio.
+# Nerfrenemy Install 
+
+Both this repository and Nerfstudio should be cloned into a common parent repository, called something like `nerfrenemy_ws` 
+
+Starting from [Nerfstudio Installation](https://docs.nerf.studio/quickstart/installation.html)
+```
+conda create --name nerfstudio -y python=3.8
+conda activate nerfstudio
+python -m pip install --upgrade pip
+
+pip uninstall torch torchvision functorch tinycudann
+```
+
+Then for using Cuda 11.7
+```
+pip install torch==2.0.1+cu117 torchvision==0.15.2+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+conda install -c "nvidia/label/cuda-11.7.1" cuda-toolkit
+```
+
+```
+pip install ninja git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+```
+
+
+Then clone Nerfstudio to the workspace directory. Currently this would actually require cloning my fork which handles adding overriding the pixel sampling approach for some dictionary keys, like those coming from posecnn.
+
+I am not installing in editable mode because Nerfrenemy then has a hard time finding the source files. If you need to update then just re-run the install script
+```
+git clone git@github.com:jfenton888/nerfstudio.git
+cd nerfstudio
+pip install --upgrade pip setuptools
+pip install .
+```
+
+```
+ns-install-cli
+```
+
+Nerfacto should be completely installed now
+
+For installing Nerfrenemy, return to the workspace directory
+
+```
+git clone git@github.com:jfenton888/nerfrenemy.git
+cd nerfrenemy
+pip install -e .
+```
+
+```
+ns-install-cli
+```
+
+
+
 
 ## File Structure
 We recommend the following file structure:
 
 ```
-├── my_method
+├── frenemy
 │   ├── __init__.py
-│   ├── my_config.py
-│   ├── custom_pipeline.py [optional]
-│   ├── custom_model.py [optional]
-│   ├── custom_field.py [optional]
-│   ├── custom_datamanger.py [optional]
-│   ├── custom_dataparser.py [optional]
+│   ├── frenemy_config.py
+│   ├── frenemy_model.py
+│   ├── task_models
+│   │   ├── base_task.py
+│   │   ├── posecnn_task.py
+│   ├── PoseCNN
+│   │   ├── posecnn.py
+│   │   ├── posecnn_model.pth
+│   ├── posecnn_dataset.py
+│   ├── posecnn_segmentation_dataset.py
+│   ├── propspose_datamanger.py
+│   ├── propspose_segmentation_datamanger.py
+├── utils
+│   ├── datset_modifier.py
+│   ├── metric_over_ablation.py
 │   ├── ...
 ├── pyproject.toml
 ```
 
-## Registering with Nerfstudio
-Ensure that nerfstudio has been installed according to the [instructions](https://docs.nerf.studio/en/latest/quickstart/installation.html). Clone or fork this repository and run the commands:
-
-```
-conda activate nerfstudio
-cd nerfstudio-method-template/
-pip install -e .
-ns-install-cli
-```
 
 ## Running the new method
-This repository creates a new Nerfstudio method named "method-template". To train with it, run the command:
+First you will need to train a nerfacto model on the dataset that you wish to modify. Keep in mind that the directory from which you run this command matters as it determines where the model gets saved. I chose to train most model from inside the nerfstudio directory and stored datasets outside in the workspace directory
 ```
-ns-train method-template --data [PATH]
+ns-train nerfacto --data ../datasets/PROPS-NeRF
 ```
 
 
-
-
-## Helpful Commands from this project
-
-Set environment variables that get added or removed on activation of the conda environment
-`$CONDA_PREFIX/etc/conda/activate.d` and `$CONDA_PREFIX/etc/conda/deactivate.d`
-
-#### These lines are to be added
-From https://stackoverflow.com/questions/68221962/nvcc-not-found-but-cuda-runs-fine
-
-export CUDA_HOME=$CONDA_PREFIX
-export PATH=${CUDA_HOME}/bin:${PATH}
-export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:$LD_LIBRARY_PATH
-
-
-
-
-### Issues 
-
-For some reason currently getting this when activating the environment when nerfstudio is pip installed (goes away when uninstalled)
 ```
-hotel@hotel-sim:~/nerfrenemy_ws/nerfstudio$ conda activate nerfstudio
-optimizer: command not found
-inside: command not found
-is: No such file or directory
-inside: command not found
-Warning:: command not found
-Unable: command not found
-libio_e57.so:: command not found
-bash: /home/hotel/anaconda3/envs/nerfstudio/lib/python3.8/site-packages/nerfstudio/scripts/completions/bash/_ns-export: line 6: syntax error near unexpected token `('
-bash: /home/hotel/anaconda3/envs/nerfstudio/lib/python3.8/site-packages/nerfstudio/scripts/completions/bash/_ns-export: line 6: `Cannot load library /home/hotel/anaconda3/envs/nerfstudio/lib/python3.8/site-packages/pymeshlab/lib/plugins/libio_e57.so: (/lib/x86_64-linux-gnu/libp11-kit.so.0: undefined symbol: ffi_type_pointer, version LIBFFI_BASE_7.0)'
-optimizer: command not found
-inside: command not found
-is: No such file or directory
-inside: command not found
-optimizer: command not found
-inside: command not found
-is: No such file or directory
-inside: command not found
-optimizer: command not found
-inside: command not found
-is: No such file or directory
-inside: command not found
+ns-train method-template --data ../datasets/PROPS-NeRF --pipeline.model.nerf-path outputs/PROPS-NeRF/nerfacto/TIME/nerfstudio_models/
+```
+
+The flag that are important to have at te correct paths
+
+```
+--data
+--pipeline.model.nerf-path
+--pipeline.model.task-model.model-path
+--pipeline.model.task-model.dataset-dir
 ```
