@@ -101,17 +101,10 @@ class PROPSPoseSegmentation(DataParser):
             meta = load_from_json(self.config.data / "transforms.json")
             data_dir = self.config.data
 
-        # For PoseCNN
-        # depth_path = os.path.join(data_dir, "depth")
-        # depth_list = os.listdir(depth_path)
-        # depth_list.sort()
+        # For PoseCNN Segmentation
         mask_path = os.path.join(data_dir, "mask_visib")
         mask_list = os.listdir(mask_path)
         mask_list.sort()
-        # scene_gt_json = os.path.join(data_dir, "gt.json")
-        # scene_gt_info_json = os.path.join(data_dir, "gt_info.json")
-        # scene_gt = json.load(open(scene_gt_json))
-        # scene_gt_info = json.load(open(scene_gt_info_json))
 
         image_filenames = []
         mask_filenames = []
@@ -191,12 +184,6 @@ class PROPSPoseSegmentation(DataParser):
             # PoseCNN specific
             idx = int(fname.stem)
 
-            # depth_file = f"{idx:06d}.png"
-            # depth_fname = os.path.join(depth_path, depth_file)
-            # depth_filenames.append(Path(depth_fname))
-
-            # scene_objs_gt = scene_gt[str(idx)]
-            # scene_objs_info_gt = scene_gt_info[str(idx)]
             objs_dict = {}
             """
             objs_dict = {
@@ -211,17 +198,7 @@ class PROPSPoseSegmentation(DataParser):
             }
             """
             for obj_idx in range(10):
-            # for obj_idx in range(len(scene_objs_gt)):
                 objs_dict[obj_idx] = {}
-                # objs_dict[obj_idx]['R'] = np.array(scene_objs_gt[obj_idx]['cam_R_m2c']).reshape(3, 3)
-                # objs_dict[obj_idx]['T'] = np.array(scene_objs_gt[obj_idx]['cam_t_m2c']).reshape(3, 1)
-                # objs_dict[obj_idx]['obj_id'] = scene_objs_gt[obj_idx]['obj_id']
-                # # if scene_objs_info_gt[obj_idx]['bbox_visib'] == []:
-                # #     objs_dict[obj_idx]['visible'] = False
-                # #     objs_dict[obj_idx]['bbox_visib'] = [0, 0, 0, 0]
-                # # else:
-                # #     objs_dict[obj_idx]['visible'] = True
-                # objs_dict[obj_idx]['bbox_visib'] = scene_objs_info_gt[obj_idx]['bbox_visib']
                 assert f"{idx:006d}_{obj_idx:06d}.png" in mask_list
                 objs_dict[obj_idx]['visible_mask_path'] = os.path.join(mask_path, f"{idx:006d}_{obj_idx:06d}.png")
 

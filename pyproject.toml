@@ -11,7 +11,9 @@ include = ["frenemy*"]
 # register the entry point of your new method here:
 [project.entry-points.'nerfstudio.method_configs']
 frenemy = 'frenemy.frenemy_config:frenemy_method'
-nerfacto2 = 'frenemy.frenemy_config:nerfacto2'
+frenemy_segmentation = 'frenemy.frenemy_config:frenemy_segmentation_method'
+nerfacto_props = 'frenemy.frenemy_config:nerfacto_props'
 
 [project.entry-points.'nerfstudio.dataparser_configs']
 PROPSPoseParser = 'frenemy.propspose_dataparser:PROPSPoseParserSpec'
+PROPSPoseSegmentationParser = 'frenemy.propspose_segmentation_dataparser:PROPSPoseSegmentationParserSpec'

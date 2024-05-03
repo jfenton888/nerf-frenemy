@@ -20,7 +20,7 @@ from frenemy.PoseCNN.rob599.utils import Visualize, format_gt_RTs
 class PoseCNNSegmentationTaskConfig(TaskConfig):
     """Configuration for task instantiation"""
 
-    _target: Type = field(default_factory=lambda: PoseCNNTask)
+    _target: Type = field(default_factory=lambda: PoseCNNSegmentationTask)
     """target class to instantiate"""
     model_path: Path = Path("../nerfrenemy/frenemy/PoseCNN/posecnn_model.pth")
     """Path to the PoseCNN model weights"""
@@ -110,7 +110,65 @@ class PoseCNNSegmentationTask(Task):
             models_pcd[m - 1] = model[np.random.randint(0, model.shape[0], 1024)]
         return models_pcd
 
+    def posecnn_dict(self, outputs, batch, image_idx):
+        """
+        input_dict = {
+            'rgb', # [batch_size, 3, H, W]
+            'depth', # [batch_size, 1, H, W]
+            'objs_id', # [batch_size, N]
+            'mask', # [batch_size, N, H, W]
+            'bbx', # [batch_size, N, 4]
+            'RTs' # [batch_size, N, 3, 4]
+        }
+        """
+        posecnn_dict = {}
+
+        # There is only one image in the batch
+        if image_idx == None:
+            posecnn_dict["label"] = batch["label"].to(self.device) # [B, 11, H, W]
+            # posecnn_dict["depth"] = batch["depth"].to(self.device) # [B, 1, H, W]
+            # posecnn_dict["objs_id"] = batch["objs_id"].to(self.device) # [B, N]
+            # posecnn_dict["bbx"] = batch["bbx"].to(self.device) # [B, N, 4]
+            # posecnn_dict["RTs"] = batch["RTs"].to(self.device) # [B, N, 3, 4]
+            # posecnn_dict["centers"] = batch["centers"].to(self.device) # [B, N, 3]
+        else:
+            posecnn_dict["label"] = batch["label"][image_idx].to(self.device) # [B, 11, H, W]
+            # posecnn_dict["depth"] = batch["depth"][image_idx].to(self.device) # [B, 1, H, W]
+            # posecnn_dict["objs_id"] = batch["objs_id"][image_idx].to(self.device) # [B, N]
+            # posecnn_dict["bbx"] = batch["bbx"][image_idx].to(self.device) # [B, N, 4]
+            # posecnn_dict["RTs"] = batch["RTs"][image_idx].to(self.device) # [B, N, 3, 4]
+            # posecnn_dict["centers"] = batch["centers"][image_idx].to(self.device) # [B, N, 3]
+
+        # centermaps = torch.zeros((self.max_instance_num, 3, self.resolution[1], self.resolution[0]), device=self.device)
+
+        # for idx in range(posecnn_dict["objs_id"].shape[0]):
+        #     if torch.any(posecnn_dict["bbx"][idx] > 0):
+
+        #         RT = posecnn_dict["RTs"][idx]
+        #         center = posecnn_dict["centers"][idx]
+                
+        #         x = torch.linspace(0, self.resolution[0] - 1, self.resolution[0], device=self.device)
+        #         y = torch.linspace(0, self.resolution[1] - 1, self.resolution[1], device=self.device)
+        #         xv, yv = torch.meshgrid(x, y, indexing="xy")
+        #         dx, dy = float(center[0]) - xv, float(center[1]) - yv
+        #         distance = torch.sqrt(dx ** 2 + dy ** 2)
+        #         nx, ny = dx / distance, dy / distance
+        #         Tz = torch.ones((self.resolution[1], self.resolution[0]), device=self.device) * RT[2, 3]
+        #         centermaps[idx] = torch.stack([nx, ny, Tz])
+
+        # posecnn_dict["centermaps"] = centermaps.reshape(-1, self.resolution[1], self.resolution[0])
+
+        posecnn_dict["label"] = posecnn_dict["label"].unsqueeze(0)
+        # posecnn_dict["depth"] = posecnn_dict["depth"].unsqueeze(0)
+        # posecnn_dict["objs_id"] = posecnn_dict["objs_id"].unsqueeze(0)
+        # posecnn_dict["bbx"] = posecnn_dict["bbx"].unsqueeze(0)
+        # posecnn_dict["RTs"] = posecnn_dict["RTs"].unsqueeze(0)
+        # posecnn_dict["centers"] = posecnn_dict["centers"].unsqueeze(0).to(int)
+        # posecnn_dict["centermaps"] = posecnn_dict["centermaps"].unsqueeze(0)
+
+        return posecnn_dict
     
+
     def get_metrics_dict(self, metrics_dict, outputs, batch):
         """Compute the metrics of the model."""
         
@@ -167,75 +225,21 @@ class PoseCNNSegmentationTask(Task):
             'RTs' # [batch_size, N, 3, 4]
         }
         """
-        posecnn_dict = {}
-
-        # There is only one image in the batch
-        # print(batch["cameras"][patch_image])
-        posecnn_dict["label"] = batch["label"][patch_image].to(self.device) # [B, 11, H, W]
-        # posecnn_dict["depth"] = batch["depth"][patch_image].to(self.device) # [B, 1, H, W]
-        posecnn_dict["objs_id"] = batch["objs_id"][patch_image].to(self.device) # [B, N]
-        # posecnn_dict["bbx"] = batch["bbx"][patch_image].to(self.device) # [B, N, 4]
-        # posecnn_dict["RTs"] = batch["RTs"][patch_image].to(self.device) # [B, N, 3, 4]
-        # posecnn_dict["centers"] = batch["centers"][patch_image].to(self.device) # [B, N, 3]
-
-        # centermaps = torch.zeros((self.max_instance_num, 3, self.resolution[1], self.resolution[0]), device=self.device)
-
-        # for idx in range(posecnn_dict["objs_id"].shape[0]):
-        #     if torch.any(posecnn_dict["bbx"][idx] > 0):
-
-        #         RT = posecnn_dict["RTs"][idx]
-        #         center = posecnn_dict["centers"][idx]
-                
-        #         x = torch.linspace(0, self.resolution[0] - 1, self.resolution[0], device=self.device)
-        #         y = torch.linspace(0, self.resolution[1] - 1, self.resolution[1], device=self.device)
-        #         xv, yv = torch.meshgrid(x, y, indexing="xy")
-        #         dx, dy = float(center[0]) - xv, float(center[1]) - yv
-        #         distance = torch.sqrt(dx ** 2 + dy ** 2)
-        #         nx, ny = dx / distance, dy / distance
-        #         Tz = torch.ones((self.resolution[1], self.resolution[0]), device=self.device) * RT[2, 3]
-        #         centermaps[idx] = torch.stack([nx, ny, Tz])
-
-        # posecnn_dict["centermaps"] = centermaps.reshape(-1, self.resolution[1], self.resolution[0])
-
-        posecnn_dict["label"] = posecnn_dict["label"].unsqueeze(0)
-        # posecnn_dict["depth"] = posecnn_dict["depth"].unsqueeze(0)
-        posecnn_dict["objs_id"] = posecnn_dict["objs_id"].unsqueeze(0)
-        # posecnn_dict["bbx"] = posecnn_dict["bbx"].unsqueeze(0)
-        # posecnn_dict["RTs"] = posecnn_dict["RTs"].unsqueeze(0)
-        # posecnn_dict["centers"] = posecnn_dict["centers"].unsqueeze(0).to(int)
-        # posecnn_dict["centermaps"] = posecnn_dict["centermaps"].unsqueeze(0)
-
+        posecnn_dict = self.posecnn_dict(outputs, batch, patch_image)
+        
         # Get the loss of the original image to compare against the modified image
         posecnn_dict["rgb"] = original_image.permute(0, 3, 1, 2)
-
-        # print("posecnn_dict[\"rgb\"] {} {}".format(posecnn_dict["rgb"].shape, posecnn_dict["rgb"].dtype))
-        # print("posecnn_dict[\"label\"] {} {}".format(posecnn_dict["label"].shape, posecnn_dict["label"].dtype))
-
         with torch.no_grad():
             original_task_loss = self.posecnn_model(posecnn_dict)
 
+        # Get the loss of the modified image
         modified_image[0, batch["indices"][:,1], batch["indices"][:,2], :] = outputs["rgb"]
         posecnn_dict["rgb"] = modified_image.permute(0, 3, 1, 2)
 
-        # print("posecnn_dict[\"rgb\"] {} {}".format(posecnn_dict["rgb"].shape, posecnn_dict["rgb"].dtype))
-        # print("posecnn_dict[\"label\"] {} {}".format(posecnn_dict["label"].shape, posecnn_dict["label"].dtype))
-        # print("posecnn_dict[\"depth\"] {} {}".format(posecnn_dict["depth"].shape, posecnn_dict["depth"].dtype))
-        # print("posecnn_dict[\"objs_id\"] {} {}".format(posecnn_dict["objs_id"].shape, posecnn_dict["objs_id"].dtype))
-        # print("posecnn_dict[\"bbx\"] {} {}".format(posecnn_dict["bbx"].shape, posecnn_dict["bbx"].dtype))
-        # print("posecnn_dict[\"RTs\"] {} {}".format(posecnn_dict["RTs"].shape, posecnn_dict["RTs"].dtype))
-        # print("posecnn_dict[\"centermaps\"] {} {}".format(posecnn_dict["centermaps"].shape, posecnn_dict["centermaps"].dtype))
-        # print("posecnn_dict[\"centers\"] {} {}".format(posecnn_dict["centers"].shape, posecnn_dict["centers"].dtype))
-        
-
         task_loss = self.posecnn_model(posecnn_dict)
 
-
         loss_dict["segmentation_loss"] = self.config.segmentation_loss_mult * task_loss["loss_segmentation"]
-        loss_dict["translation_loss"] = self.config.translation_loss_mult * task_loss["loss_centermap"]
-        loss_dict["rotation_loss"] = self.config.rotation_loss_mult * task_loss["loss_R"]
-        # loss_dict["original_segmentation_loss"] = self.config.segmentation_loss_mult * original_task_loss["loss_segmentation"]
-        # loss_dict["original_translation_loss"] = self.config.translation_loss_mult * original_task_loss["loss_centermap"]
-        # loss_dict["original_rotation_loss"] = self.config.rotation_loss_mult * original_task_loss["loss_R"]
+        loss_dict["original_segmentation_loss"] = self.config.segmentation_loss_mult * original_task_loss["loss_segmentation"]
 
 
     def get_image_metrics_and_images(
@@ -288,12 +292,6 @@ class PoseCNNSegmentationTask(Task):
         rgb_np =  (rgb.cpu().numpy() * 255).astype(np.uint8)
         rgb_predicted_np =  (predicted_rgb.cpu().numpy() * 255).astype(np.uint8)
         
-        pose_dict = format_gt_RTs(batch["RTs"])
-        render = torch.tensor(self.visualizer.vis_oneview(
-            ipt_im = rgb_np, 
-            obj_pose_dict = pose_dict,
-            alpha = alpha
-            ))
 
         original_pose_rgb = torch.tensor(self.visualizer.vis_oneview(
             ipt_im = rgb_np, 
@@ -307,7 +305,7 @@ class PoseCNNSegmentationTask(Task):
             alpha = alpha
             ))
         
-        combined_pose_rgb = torch.cat([render, original_pose_rgb, pred_pose_rgb], dim=1).to(torch.float) / 255.
+        combined_pose_rgb = torch.cat([original_pose_rgb, pred_pose_rgb], dim=1).to(torch.float) / 255.
         images_dict["pose"] = combined_pose_rgb
 
 

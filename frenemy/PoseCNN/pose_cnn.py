@@ -401,12 +401,13 @@ class PoseCNN(nn.Module):
     """
     PoseCNN
     """
-    def __init__(self, pretrained_backbone, models_pcd, cam_intrinsic):
+    def __init__(self, pretrained_backbone, models_pcd, cam_intrinsic, only_segmentation=False):
         super(PoseCNN, self).__init__()
 
         self.iou_threshold = 0.7
         self.models_pcd = models_pcd
         self.cam_intrinsic = cam_intrinsic
+        self.only_segmentation = only_segmentation
 
         ######################################################################
         # TODO: Initialize layers and components of PoseCNN.                 #
@@ -454,7 +455,6 @@ class PoseCNN(nn.Module):
                 "loss_R": 0
             }
 
-            gt_bbx = self.getGTbbx(input_dict)
             gt_label = input_dict['label']
 
             ######################################################################
@@ -493,46 +493,55 @@ class PoseCNN(nn.Module):
             
             # 1. Feature Extraction
             feature1, feature2 = self.feature_extractor(input_dict)
-            # print("feature1 {} {}".format(feature1.shape, feature1.dtype))
-            # print("feature2 {} {}".format(feature2.shape, feature2.dtype))
-
-            # self.feature_extractor = self.feature_extractor.to(torch.float32)
-            # feature1, feature2 = self.feature_extractor(input_dict)
-            # # feature1 = feature1.to(torch.float32)
-            # # feature2 = feature2.to(torch.float32)
-            # print("feature1 {} {}".format(feature1.shape, feature1.dtype))
-            # print("feature2 {} {}".format(feature2.shape, feature2.dtype))
 
             # 2. Segmentation
             pred_prob, pred_seg, pred_bbx = self.segmentation_branch(feature1, feature2)
             # print("pred_prob {} pred_seg {} pred_bbx {}".format(pred_prob.shape, pred_seg.shape, pred_bbx.shape))
             # Seg Loss
-            loss_segmentation = loss_cross_entropy(pred_prob, gt_label)
+            loss_segmentation, class_loss_segmentation = loss_cross_entropy(pred_prob, gt_label)
+            
+            if not self.only_segmentation:
+                gt_bbx = self.getGTbbx(input_dict)
 
-            # # Filter Predicted Boxes
-            filter_bbx = IOUselection(pred_bbx, gt_bbx, self.iou_threshold)
+                # Filter Predicted Boxes
+                filter_bbx = IOUselection(pred_bbx, gt_bbx, self.iou_threshold)
 
-            # 3. Translation
-            translation = self.translation_branch(feature1, feature2)
+                # 3. Translation
+                translation = self.translation_branch(feature1, feature2)
 
-            # Trans Loss
-            loss_centermap = F.l1_loss(translation, input_dict['centermaps'].to(translation.dtype))
+                # Trans Loss
+                loss_full = F.l1_loss(translation, input_dict['centermaps'].to(translation.dtype), reduction="none")
+                loss_shape = loss_full.shape
+                class_loss_centermap = loss_full.reshape(loss_shape[0], -1, 3, loss_shape[2], loss_shape[3]).mean(dim=(0, 2, 3, 4))
+                loss_centermap =  class_loss_centermap.mean() #F.l1_loss(translation, input_dict['centermaps'].to(translation.dtype))
 
-            if filter_bbx.shape[0] > 0:
-                # 4. Rotation
-                rotation = self.rotation_branch(feature1, feature2, filter_bbx[:,:-1])
-                pred_rot, pred_label = self.estimateRotation(rotation, filter_bbx)
-                gt_rot = self.gtRotation(filter_bbx, input_dict)
-                # Rot Loss
-                loss_R = loss_Rotation(pred_rot, gt_rot, pred_label, self.models_pcd)
+                if filter_bbx.shape[0] > 0:
+                    # 4. Rotation
+                    rotation = self.rotation_branch(feature1, feature2, filter_bbx[:,:-1])
+                    pred_rot, pred_label = self.estimateRotation(rotation, filter_bbx)
+                    gt_rot = self.gtRotation(filter_bbx, input_dict)
+                    # Rot Loss
+                    loss_R, loss_R_class = loss_Rotation(pred_rot, gt_rot, pred_label, self.models_pcd)
+                else:
+                    loss_R, loss_R_class = 0, [0] * 10
+                
+                loss_dict = {
+                    "loss_segmentation": loss_segmentation,
+                    "loss_centermap": loss_centermap,
+                    "loss_R": loss_R,
+                    **{f"loss_segmentation_{i}": loss for i, loss in enumerate(class_loss_segmentation)},
+                    **{f"loss_centermap_{i}": loss for i, loss in enumerate(class_loss_centermap)},
+                    **{f"loss_R_{i}": loss for i, loss in enumerate(loss_R_class)},
+                }
             else:
+                loss_centermap = 0
                 loss_R = 0
 
-            loss_dict = {
-                "loss_segmentation": loss_segmentation,
-                "loss_centermap": loss_centermap,
-                "loss_R": loss_R,
-            }
+                loss_dict = {
+                    "loss_segmentation": loss_segmentation,
+                    "loss_centermap": loss_centermap,
+                    "loss_R": loss_R,
+                }
 
             ######################################################################
             #                            END OF YOUR CODE                        #

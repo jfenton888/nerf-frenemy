@@ -129,30 +129,20 @@ class PoseCNNDataset(InputDataset):
             'centermaps', []
         }
         """
-        # print("{} has {}".format(type(self.objs_dict_list), type(idx)))
         depth_path = self.depth_filenames[idx]
         objs_dict = self.objs_dict_list[idx]
 
         data_dict = {}
-        # with Image.open(rgb_path) as im:
-        #     rgb = np.array(im)
-
-        # if self.split == 'train' and np.random.rand(1) > 1 - self.rgb_aug_prob:
-        #     rgb = chromatic_transform(rgb)
-        #     rgb = add_noise(rgb)
-        # rgb = rgb.astype(np.float32)/255
-        # data_dict['rgb'] = rgb.transpose((2,0,1))
 
         with Image.open(depth_path) as im:
-            data_dict['depth'] = np.array(im, dtype=np.int16)[np.newaxis, :]
-        # ## TODO data-augmentation of depth 
+            data_dict['depth'] = torch.tensor(np.array(im, dtype=np.int16)[np.newaxis, :])
+
         assert(len(objs_dict) <= self.max_instance_num)
         objs_id = np.zeros(self.max_instance_num, dtype=np.uint8)
         label = np.zeros((self.max_instance_num + 1, self.H, self.W), dtype=bool)
         bbx = np.zeros((self.max_instance_num, 4))
         RTs = np.zeros((self.max_instance_num, 3, 4))
         centers = np.zeros((self.max_instance_num, 2))
-        centermaps = np.zeros((self.max_instance_num, 3, self.resolution[1], self.resolution[0]))
 
         for idx in objs_dict.keys():
             if len(objs_dict[idx]['bbox_visib']) > 0:
@@ -175,7 +165,6 @@ class PoseCNNDataset(InputDataset):
                 center = center_homo[:2]/center_homo[2]
                 
                 x = np.linspace(0, self.resolution[0] - 1, self.resolution[0])
-                # print("data x {}".format(x.shape))
                 y = np.linspace(0, self.resolution[1] - 1, self.resolution[1])
                 xv, yv = np.meshgrid(x, y)
                 dx, dy = center[0] - xv, center[1] - yv
@@ -188,38 +177,11 @@ class PoseCNNDataset(InputDataset):
                 centers[idx] = np.array([float(center[0]), float(center[1])])
         label[0] = 1 - label[1:].sum(axis=0)
 
-        data_dict['objs_id'] = objs_id
-        data_dict['label'] = label
-        data_dict['bbx'] = bbx
-        data_dict['RTs'] = RTs
-        data_dict['centers'] = centers
+        data_dict['objs_id'] = torch.tensor(objs_id)
+        data_dict['label'] = torch.tensor(label)
+        data_dict['bbx'] = torch.tensor(bbx)
+        data_dict['RTs'] = torch.tensor(RTs)
+        data_dict['centers'] = torch.tensor(centers)
         return data_dict
 
 
-
-# class SemanticDataset(InputDataset):
-#     """Dataset that returns images and semantics and masks.
-
-#     Args:
-#         dataparser_outputs: description of where and how to read input images.
-#     """
-
-#     exclude_batch_keys_from_device = InputDataset.exclude_batch_keys_from_device + ["mask", "semantics"]
-
-#     def __init__(self, dataparser_outputs: DataparserOutputs, scale_factor: float = 1.0):
-#         super().__init__(dataparser_outputs, scale_factor)
-#         assert "semantics" in dataparser_outputs.metadata.keys() and isinstance(self.metadata["semantics"], Semantics)
-#         self.semantics = self.metadata["semantics"]
-#         self.mask_indices = torch.tensor(
-#             [self.semantics.classes.index(mask_class) for mask_class in self.semantics.mask_classes]
-#         ).view(1, 1, -1)
-
-#     def get_metadata(self, data: Dict) -> Dict:
-#         # handle mask
-#         filepath = self.semantics.filenames[data["image_idx"]]
-#         semantic_label, mask = get_semantics_and_mask_tensors_from_path(
-#             filepath=filepath, mask_indices=self.mask_indices, scale_factor=self.scale_factor
-#         )
-#         if "mask" in data.keys():
-#             mask = mask & data["mask"]
-#         return {"mask": mask, "semantics": semantic_label}

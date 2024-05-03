@@ -15,36 +15,24 @@ from torch.nn import Parameter
 from pathlib import Path
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Mapping, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Literal, Mapping, Optional, Tuple, Type
 
-import torchvision.transforms.functional
-import torchvision.transforms.v2
 from frenemy.task_models.base_task import Task, TaskConfig
-from frenemy.task_models.fasterrcnn_task import FasterRCNNTaskConfig
 from frenemy.task_models.posecnn_task import PoseCNNTaskConfig
-from nerfstudio.cameras.cameras import Cameras
+
 from nerfstudio.cameras.rays import RayBundle, RaySamples
-from nerfstudio.data.scene_box import OrientedBox
 from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.field_components.spatial_distortions import SceneContraction
 from nerfstudio.fields.nerfacto_field import NerfactoField
-from nerfstudio.model_components.losses import MSELoss, distortion_loss, interlevel_loss
-from nerfstudio.model_components.renderers import RGBRenderer
-
-# from nerfstudio.nerfstudio.configs.config_utils import to_immutable_dict
+from nerfstudio.model_components.losses import MSELoss
 from nerfstudio.models.base_model import ModelConfig
-
 from nerfstudio.models.base_model import Model
-from nerfstudio.models.nerfacto import NerfactoModel
-from nerfstudio.utils import colormaps  # for custom Model
 
 
 @dataclass
 class FrenemyModelConfig(ModelConfig):
-    """Template Model Configuration.
-
-    Add your custom model config parameters here.
+    """Nerfrenemy Model Configuration.
     """
 
     _target: Type = field(default_factory=lambda: FrenemyModel)
@@ -66,13 +54,13 @@ class FrenemyModelConfig(ModelConfig):
     """Perturbation weight."""
     
     ## Perturbation field config components
-    hidden_dim: int = 64 # 64
+    hidden_dim: int = 64
     """Dimension of hidden layers"""
-    hidden_dim_color: int = 64 # 64
+    hidden_dim_color: int = 64
     """Dimension of hidden layers for color network"""
-    hidden_dim_transient: int = 64 # 64
+    hidden_dim_transient: int = 64
     """Dimension of hidden layers for transient network"""
-    num_levels: int = 16 # 16
+    num_levels: int = 16
     """Number of levels of the hashmap for the base mlp."""
     base_res: int = 16
     """Resolution of the base grid for the hashgrid."""
@@ -82,19 +70,10 @@ class FrenemyModelConfig(ModelConfig):
     """Size of the hashmap for the base mlp"""
     features_per_level: int = 2
     """How many hashgrid features per level"""
-    
-    # use_proposal_weight_anneal: bool = True
-    # """Whether to use proposal weight annealing."""
     use_appearance_embedding: bool = True
     """Whether to use an appearance embedding."""
     use_average_appearance_embedding: bool = True
     """Whether to use average appearance embedding or zeros for inference."""
-    # proposal_weights_anneal_slope: float = 10.0
-    # """Slope of the annealing function for the proposal weights."""
-    # proposal_weights_anneal_max_num_iters: int = 1000
-    # """Max num iterations for the annealing function."""
-    # use_single_jitter: bool = True
-    # """Whether use single jitter or not for the proposal networks."""
     predict_normals: bool = False
     """Whether to predict normals or not."""
     disable_scene_contraction: bool = False
@@ -226,7 +205,6 @@ class FrenemyModel(Model):
         self, training_callback_attributes: TrainingCallbackAttributes
     ) -> List[TrainingCallback]:
         
-        
         callbacks = []
         return callbacks
 
@@ -266,38 +244,13 @@ class FrenemyModel(Model):
         predicted_rgb = outputs["rgb"]
         metrics_dict["psnr"] = self.nerf.psnr(predicted_rgb, gt_rgb)
 
+        # The task model will add its own metrics to the metrics_dict
         self.task_model.get_metrics_dict(metrics_dict, outputs, batch)
-
-        patch_images = torch.unique(batch["indices"][:,0])
-        assert patch_images.size(0) == 1, f"All indices in batch must be from same image, but found {patch_images}"
 
         return metrics_dict
     
 
-        # metrics_dict = {}
-        # gt_rgb = batch["image"].to(self.device)  # RGB or RGBA image
-        # gt_rgb = self.nerf.renderer_rgb.blend_background(gt_rgb)  # Blend if RGBA
-        # predicted_rgb = outputs["rgb"]
-        # metrics_dict["psnr"] = self.nerf.psnr(predicted_rgb, gt_rgb)
-
-        # # gt_rgb_shaped = gt_rgb.permute(1, 0).view(3, 64, 64)
-        # # predicted_rgb_shaped = predicted_rgb.permute(1, 0).view(3, 64, 64)
-
-        # # self.task_model.eval()
-        # # task_outputs = self.task_model(gt_rgb_shaped.unsqueeze(0))
-
-        # # if self.training:
-        # #     metrics_dict["distortion"] = distortion_loss(outputs["weights_list"], outputs["ray_samples_list"])
-        # # # self.nerf.camera_optimizer.get_metrics_dict(metrics_dict)
-
-        # # TODO: Add metrics from task specific network here. This will require loading the network in during setup
-
-        # return metrics_dict
-
-
-    def get_loss_dict(self, outputs, batch, metrics_dict=None):
-        # TODO: Add loss from task specific network here. This will require loading the network in during setup
-        
+    def get_loss_dict(self, outputs, batch, metrics_dict=None):        
         loss_dict = {}
 
         # L2 norm regularization loss
@@ -340,21 +293,12 @@ class FrenemyModel(Model):
         self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
     ) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
         # This will be called during evaluation, and will be called with full images as outputs shaped [H, W, C]
-
-        # print("training: {}".format(self.nerf.training))
         
         gt_rgb = batch["image"].to(self.device)
         predicted_rgb = outputs["rgb"]  # Blended with background (black if random background)
         gt_rgb = self.nerf.renderer_rgb.blend_background(gt_rgb)
-        # acc = colormaps.apply_colormap(outputs["accumulation"])
-        # depth = colormaps.apply_depth_colormap(
-        #     outputs["depth"],
-        #     accumulation=outputs["accumulation"],
-        # )
 
         combined_rgb = torch.cat([gt_rgb, predicted_rgb], dim=1)
-        # combined_acc = torch.cat([acc], dim=1)
-        # combined_depth = torch.cat([depth], dim=1)
 
         # Switch images from[H, W, C] to [1, C, H, W]  for metrics computations
         gt_rgb = torch.moveaxis(gt_rgb, -1, 0)[None, ...]
@@ -369,14 +313,6 @@ class FrenemyModel(Model):
         metrics_dict["lpips"] = float(lpips)
 
         images_dict = {"img": combined_rgb} #, "accumulation": combined_acc, "depth": combined_depth}
-
-        # for i in range(self.config.nerf.num_proposal_iterations):
-        #     key = f"prop_depth_{i}"
-        #     prop_depth_i = colormaps.apply_depth_colormap(
-        #         outputs[key],
-        #         accumulation=outputs["accumulation"],
-        #     )
-        #     images_dict[key] = prop_depth_i
 
         # Visualize the regions that have been changed by the model (probably better done with some form of greyscale)
         diff_image = torch.abs(gt_rgb - predicted_rgb)
